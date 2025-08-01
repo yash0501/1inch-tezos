@@ -1,0 +1,15 @@
+{
+  "scripts": {
+    "compile": "hardhat compile",
+    "compile:tezos": "smartpy compile contracts/tezos/EscrowFactoryAdvanced.py --output-dir contracts/tezos/compiled",
+    "deploy:ethereum:sepolia": "hardhat run scripts/deploy-ethereum-contracts.js --network sepolia",
+    "deploy:ethereum:goerli": "hardhat run scripts/deploy-ethereum-contracts.js --network goerli",
+    "deploy:tezos:ghostnet": "node scripts/deploy-tezos-contracts.js",
+    "deploy:testnet": "npm run deploy:ethereum:sepolia && npm run deploy:tezos:ghostnet",
+    "test:ethereum": "hardhat test",
+    "test:tezos": "node test/tezos/testEscrow.js",
+    "verify:sepolia": "hardhat verify --network sepolia",
+    "node": "hardhat node",
+    "example:create-order": "node backend/src/examples/createOrder.js"
+  }
+}

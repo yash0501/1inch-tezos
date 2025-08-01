@@ -1,0 +1,648 @@
+{
+    storage
+        (pair
+            (option %access_token address)
+            (pair
+                (bool %cancelled)
+                (pair
+                    (pair %immutables
+                        (mutez %amount)
+                        (pair
+                            (timestamp %cancellation_start)
+                            (pair
+                                (bytes %hashlock)
+                                (pair
+                                    (address %maker)
+                                    (pair
+                                        (bytes %order_hash)
+                                        (pair
+                                            (timestamp %public_cancellation_start)
+                                            (pair
+                                                (timestamp %public_withdrawal_start)
+                                                (pair
+                                                    (timestamp %rescue_start)
+                                                    (pair
+                                                        (mutez %safety_deposit)
+                                                        (pair
+                                                            (address %taker)
+                                                            (pair
+                                                                (option %token_address
+                                                                    (ERROR "Cannot compile missing type: a2"))
+                                                                (timestamp %withdrawal_start))))))))))))
+                    (bool %withdrawn))));
+    parameter
+        (or
+            (or
+                (unit %cancel)
+                (or
+                    (unit %public_cancel)
+                    (bytes %public_withdraw)))
+            (or
+                (pair %rescue_funds
+                    (mutez %amount)
+                    (option %token_address
+                        (ERROR "Cannot compile missing type: a135")))
+                (or
+                    (bytes %withdraw)
+                    (pair %withdraw_to
+                        (bytes %secret)
+                        (address %target)))));
+    code
+        {
+            UNPAIR;
+            IF_LEFT
+                {
+                    IF_LEFT
+                        {
+                            DUP 2;
+                            GET 5;
+                            GET 19;
+                            SENDER;
+                            COMPARE;
+                            EQ;
+                            IF
+                                {
+                                }
+                                {
+                                    PUSH string "Only taker can call";
+                                    FAILWITH
+                                };
+                            DUP 2;
+                            GET 5;
+                            GET 3;
+                            NOW;
+                            COMPARE;
+                            GE;
+                            IF
+                                {
+                                }
+                                {
+                                    PUSH string "Too early";
+                                    FAILWITH
+                                };
+                            DUP 2;
+                            GET 6;
+                            IF
+                                {
+                                    PUSH string "Already withdrawn";
+                                    FAILWITH
+                                }
+                                {
+                                };
+                            DUP 2;
+                            GET 3;
+                            IF
+                                {
+                                    PUSH string "Already cancelled";
+                                    FAILWITH
+                                }
+                                {
+                                };
+                            DUP 2;
+                            GET 5;
+                            GET 21;
+                            IF_NONE
+                                {
+                                    DROP;
+                                    NIL operation;
+                                    DUP 2;
+                                    GET 5;
+                                    GET 7;
+                                    CONTRACT unit;
+                                    IF_NONE
+                                        {
+                                            PUSH int 131;
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 3;
+                                    GET 5;
+                                    CAR;
+                                    UNIT;
+                                    TRANSFER_TOKENS;
+                                    CONS
+                                }
+                                {
+                                    PUSH string "FA2 tokens not yet implemented";
+                                    FAILWITH
+                                };
+                            SENDER;
+                            CONTRACT unit;
+                            IF_NONE
+                                {
+                                    PUSH int 136;
+                                    FAILWITH
+                                }
+                                {
+                                };
+                            DUP 3;
+                            GET 5;
+                            GET 17;
+                            UNIT;
+                            TRANSFER_TOKENS;
+                            CONS;
+                            SWAP;
+                            PUSH bool True;
+                            UPDATE 3;
+                            SWAP
+                        }
+                        {
+                            IF_LEFT
+                                {
+                                    DUP 2;
+                                    GET 5;
+                                    GET 11;
+                                    NOW;
+                                    COMPARE;
+                                    GE;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Too early";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 6;
+                                    IF
+                                        {
+                                            PUSH string "Already withdrawn";
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 2;
+                                    GET 3;
+                                    IF
+                                        {
+                                            PUSH string "Already cancelled";
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 21;
+                                    IF_NONE
+                                        {
+                                            DROP;
+                                            NIL operation;
+                                            DUP 2;
+                                            GET 5;
+                                            GET 7;
+                                            CONTRACT unit;
+                                            IF_NONE
+                                                {
+                                                    PUSH int 153;
+                                                    FAILWITH
+                                                }
+                                                {
+                                                };
+                                            DUP 3;
+                                            GET 5;
+                                            CAR;
+                                            UNIT;
+                                            TRANSFER_TOKENS;
+                                            CONS
+                                        }
+                                        {
+                                            PUSH string "FA2 tokens not yet implemented";
+                                            FAILWITH
+                                        };
+                                    SENDER;
+                                    CONTRACT unit;
+                                    IF_NONE
+                                        {
+                                            PUSH int 158;
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 3;
+                                    GET 5;
+                                    GET 17;
+                                    UNIT;
+                                    TRANSFER_TOKENS;
+                                    CONS;
+                                    SWAP;
+                                    PUSH bool True;
+                                    UPDATE 3;
+                                    SWAP
+                                }
+                                {
+                                    DUP 2;
+                                    GET 5;
+                                    GET 13;
+                                    NOW;
+                                    COMPARE;
+                                    GE;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Too early";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 3;
+                                    NOW;
+                                    COMPARE;
+                                    LT;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Too late";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 6;
+                                    IF
+                                        {
+                                            PUSH string "Already withdrawn";
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 2;
+                                    GET 3;
+                                    IF
+                                        {
+                                            PUSH string "Already cancelled";
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 5;
+                                    DUP 2;
+                                    SHA256;
+                                    COMPARE;
+                                    EQ;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Invalid secret";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 21;
+                                    IF_NONE
+                                        {
+                                            DROP;
+                                            NIL operation;
+                                            DUP 2;
+                                            GET 5;
+                                            GET 19;
+                                            CONTRACT unit;
+                                            IF_NONE
+                                                {
+                                                    PUSH int 106;
+                                                    FAILWITH
+                                                }
+                                                {
+                                                };
+                                            DUP 3;
+                                            GET 5;
+                                            CAR;
+                                            UNIT;
+                                            TRANSFER_TOKENS;
+                                            CONS
+                                        }
+                                        {
+                                            PUSH string "FA2 tokens not yet implemented";
+                                            FAILWITH
+                                        };
+                                    SENDER;
+                                    CONTRACT unit;
+                                    IF_NONE
+                                        {
+                                            PUSH int 111;
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 3;
+                                    GET 5;
+                                    GET 17;
+                                    UNIT;
+                                    TRANSFER_TOKENS;
+                                    CONS;
+                                    SWAP;
+                                    PUSH bool True;
+                                    UPDATE 6;
+                                    SWAP
+                                }
+                        }
+                }
+                {
+                    IF_LEFT
+                        {
+                            DUP 2;
+                            GET 5;
+                            GET 19;
+                            SENDER;
+                            COMPARE;
+                            EQ;
+                            IF
+                                {
+                                }
+                                {
+                                    PUSH string "Only taker can call";
+                                    FAILWITH
+                                };
+                            DUP 2;
+                            GET 5;
+                            GET 15;
+                            NOW;
+                            COMPARE;
+                            GE;
+                            IF
+                                {
+                                }
+                                {
+                                    PUSH string "Too early";
+                                    FAILWITH
+                                };
+                            DUP;
+                            CDR;
+                            IF_NONE
+                                {
+                                    NIL operation;
+                                    SENDER;
+                                    CONTRACT unit;
+                                    IF_NONE
+                                        {
+                                            PUSH int 173;
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DIG 2;
+                                    CAR;
+                                    UNIT;
+                                    TRANSFER_TOKENS;
+                                    CONS
+                                }
+                                {
+                                    PUSH string "FA2 rescue not yet implemented";
+                                    FAILWITH
+                                }
+                        }
+                        {
+                            IF_LEFT
+                                {
+                                    DUP 2;
+                                    GET 5;
+                                    GET 19;
+                                    SENDER;
+                                    COMPARE;
+                                    EQ;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Only taker can call";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 22;
+                                    NOW;
+                                    COMPARE;
+                                    GE;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Too early";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 3;
+                                    NOW;
+                                    COMPARE;
+                                    LT;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Too late";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 6;
+                                    IF
+                                        {
+                                            PUSH string "Already withdrawn";
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 2;
+                                    GET 3;
+                                    IF
+                                        {
+                                            PUSH string "Already cancelled";
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 5;
+                                    DUP 2;
+                                    SHA256;
+                                    COMPARE;
+                                    EQ;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Invalid secret";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 21;
+                                    IF_NONE
+                                        {
+                                            DROP;
+                                            NIL operation;
+                                            SENDER;
+                                            CONTRACT unit;
+                                            IF_NONE
+                                                {
+                                                    PUSH int 51;
+                                                    FAILWITH
+                                                }
+                                                {
+                                                };
+                                            DUP 3;
+                                            GET 5;
+                                            CAR;
+                                            UNIT;
+                                            TRANSFER_TOKENS;
+                                            CONS
+                                        }
+                                        {
+                                            PUSH string "FA2 tokens not yet implemented";
+                                            FAILWITH
+                                        };
+                                    SENDER;
+                                    CONTRACT unit;
+                                    IF_NONE
+                                        {
+                                            PUSH int 56;
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 3;
+                                    GET 5;
+                                    GET 17;
+                                    UNIT;
+                                    TRANSFER_TOKENS;
+                                    CONS;
+                                    SWAP;
+                                    PUSH bool True;
+                                    UPDATE 6;
+                                    SWAP
+                                }
+                                {
+                                    DUP 2;
+                                    GET 5;
+                                    GET 19;
+                                    SENDER;
+                                    COMPARE;
+                                    EQ;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Only taker can call";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 22;
+                                    NOW;
+                                    COMPARE;
+                                    GE;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Too early";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 3;
+                                    NOW;
+                                    COMPARE;
+                                    LT;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Too late";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 6;
+                                    IF
+                                        {
+                                            PUSH string "Already withdrawn";
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 2;
+                                    GET 3;
+                                    IF
+                                        {
+                                            PUSH string "Already cancelled";
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 5;
+                                    DUP 2;
+                                    CAR;
+                                    SHA256;
+                                    COMPARE;
+                                    EQ;
+                                    IF
+                                        {
+                                        }
+                                        {
+                                            PUSH string "Invalid secret";
+                                            FAILWITH
+                                        };
+                                    DUP 2;
+                                    GET 5;
+                                    GET 21;
+                                    IF_NONE
+                                        {
+                                            CDR;
+                                            CONTRACT unit;
+                                            IF_NONE
+                                                {
+                                                    PUSH int 80;
+                                                    FAILWITH
+                                                }
+                                                {
+                                                };
+                                            NIL operation;
+                                            SWAP;
+                                            DUP 3;
+                                            GET 5;
+                                            CAR;
+                                            UNIT;
+                                            TRANSFER_TOKENS;
+                                            CONS
+                                        }
+                                        {
+                                            PUSH string "FA2 tokens not yet implemented";
+                                            FAILWITH
+                                        };
+                                    SENDER;
+                                    CONTRACT unit;
+                                    IF_NONE
+                                        {
+                                            PUSH int 85;
+                                            FAILWITH
+                                        }
+                                        {
+                                        };
+                                    DUP 3;
+                                    GET 5;
+                                    GET 17;
+                                    UNIT;
+                                    TRANSFER_TOKENS;
+                                    CONS;
+                                    SWAP;
+                                    PUSH bool True;
+                                    UPDATE 6;
+                                    SWAP
+                                }
+                        }
+                };
+            NIL operation;
+            SWAP;
+            ITER
+                {
+                    CONS
+                };
+            PAIR
+        }
+}
