@@ -24,7 +24,11 @@ contract EscrowDst is Escrow, IEscrowDst {
     using AddressLib for Address;
     using TimelocksLib for Timelocks;
 
-    constructor(uint32 rescueDelay, IERC20 accessToken) BaseEscrow(rescueDelay, accessToken) {}
+    // ✅ ADD payable keyword here
+    constructor(uint32 rescueDelay, IERC20 accessToken) payable BaseEscrow(rescueDelay, accessToken) {}
+
+    // ✅ ADD receive function to accept ETH
+    receive() external payable {}
 
     /**
      * @notice See {IBaseEscrow-withdraw}.
@@ -65,8 +69,16 @@ contract EscrowDst is Escrow, IEscrowDst {
         onlyValidImmutables(immutables)
         onlyAfter(immutables.timelocks.get(TimelocksLib.Stage.DstCancellation))
     {
-        _uniTransfer(immutables.token.get(), immutables.taker.get(), immutables.amount);
-        _ethTransfer(msg.sender, immutables.safetyDeposit);
+        // ✅ FIXED: Handle ETH and token swaps properly
+        if (immutables.token.get() == address(0)) {
+            // For ETH swaps: send amount back to taker, safety deposit to caller
+            _ethTransfer(immutables.taker.get(), immutables.amount);
+            _ethTransfer(msg.sender, immutables.safetyDeposit);
+        } else {
+            // For token swaps: send tokens back to taker, safety deposit to caller
+            _uniTransfer(immutables.token.get(), immutables.taker.get(), immutables.amount);
+            _ethTransfer(msg.sender, immutables.safetyDeposit);
+        }
         emit EscrowCancelled();
     }
 
@@ -79,8 +91,30 @@ contract EscrowDst is Escrow, IEscrowDst {
         onlyValidImmutables(immutables)
         onlyValidSecret(secret, immutables)
     {
-        _uniTransfer(immutables.token.get(), immutables.maker.get(), immutables.amount);
-        _ethTransfer(msg.sender, immutables.safetyDeposit);
+        // ✅ FIXED: Handle ETH and token swaps properly
+        if (immutables.token.get() == address(0)) {
+            // For ETH swaps: send amount to maker, safety deposit to caller
+            _ethTransfer(immutables.maker.get(), immutables.amount);
+            _ethTransfer(msg.sender, immutables.safetyDeposit);
+        } else {
+            // For token swaps: send tokens to maker, safety deposit to caller
+            _uniTransfer(immutables.token.get(), immutables.maker.get(), immutables.amount);
+            _ethTransfer(msg.sender, immutables.safetyDeposit);
+        }
         emit EscrowWithdrawal(secret);
+    }
+
+    // ✅ ADD: Helper function to get contract balance
+    function getBalance() external view returns (uint256) {
+        return address(this).balance;
+    }
+
+    // ✅ ADD: Helper function to get token balance
+    function getTokenBalance(address token) external view returns (uint256) {
+        if (token == address(0)) {
+            return address(this).balance;
+        } else {
+            return IERC20(token).balanceOf(address(this));
+        }
     }
 }

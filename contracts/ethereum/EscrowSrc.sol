@@ -27,7 +27,11 @@ contract EscrowSrc is Escrow, IEscrowSrc {
     using SafeERC20 for IERC20;
     using TimelocksLib for Timelocks;
 
-    constructor(uint32 rescueDelay, IERC20 accessToken) BaseEscrow(rescueDelay, accessToken) {}
+    // ✅ ADD payable keyword here
+    constructor(uint32 rescueDelay, IERC20 accessToken) payable BaseEscrow(rescueDelay, accessToken) {}
+
+    // Add receive function to accept ETH
+    receive() external payable {}
 
     /**
      * @notice See {IBaseEscrow-withdraw}.
@@ -113,8 +117,16 @@ contract EscrowSrc is Escrow, IEscrowSrc {
         onlyValidImmutables(immutables)
         onlyValidSecret(secret, immutables)
     {
-        IERC20(immutables.token.get()).safeTransfer(target, immutables.amount);
-        _ethTransfer(msg.sender, immutables.safetyDeposit);
+        // ✅ FIXED: Handle ETH swaps properly
+        if (immutables.token.get() == address(0)) {
+            // For ETH swaps: send amount to target, safety deposit to caller
+            _ethTransfer(target, immutables.amount);
+            _ethTransfer(msg.sender, immutables.safetyDeposit);
+        } else {
+            // For token swaps: send tokens to target, safety deposit to caller
+            IERC20(immutables.token.get()).safeTransfer(target, immutables.amount);
+            _ethTransfer(msg.sender, immutables.safetyDeposit);
+        }
         emit EscrowWithdrawal(secret);
     }
 
@@ -123,8 +135,21 @@ contract EscrowSrc is Escrow, IEscrowSrc {
      * @param immutables The immutable values used to deploy the clone contract.
      */
     function _cancel(Immutables calldata immutables) internal onlyValidImmutables(immutables) {
-        IERC20(immutables.token.get()).safeTransfer(immutables.maker.get(), immutables.amount);
-        _ethTransfer(msg.sender, immutables.safetyDeposit);
+        // ✅ FIXED: Handle ETH swaps properly  
+        if (immutables.token.get() == address(0)) {
+            // For ETH swaps: send amount back to maker, safety deposit to caller
+            _ethTransfer(immutables.maker.get(), immutables.amount);
+            _ethTransfer(msg.sender, immutables.safetyDeposit);
+        } else {
+            // For token swaps: send tokens back to maker, safety deposit to caller
+            IERC20(immutables.token.get()).safeTransfer(immutables.maker.get(), immutables.amount);
+            _ethTransfer(msg.sender, immutables.safetyDeposit);
+        }
         emit EscrowCancelled();
+    }
+
+    // ✅ ADD: Helper function to get contract balance
+    function getBalance() external view returns (uint256) {
+        return address(this).balance;
     }
 }

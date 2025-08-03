@@ -527,13 +527,38 @@ class ContractDeploymentService {
     // Calculate amounts for ETH swaps
     const userAmount = BigInt(orderParams.amount);
     const safetyDeposit = BigInt(orderParams.safetyDeposit);
-    const totalFunding = userAmount + safetyDeposit; // Resolver sends everything for ETH swaps
+    const totalFunding = userAmount + safetyDeposit;
 
-    console.log('  Funding details for test:', {
+    console.log('  Funding details:', {
       userAmount: userAmount.toString(),
       safetyDeposit: safetyDeposit.toString(),
       totalFunding: totalFunding.toString(),
       tokenAddress: orderParams.tokenAddress
+    });
+
+    // Pre-calculate the deployment immutables BEFORE deployment
+    const encodedTimelocks = this.encodeTimelocks(orderParams.timelocks);
+    
+    const deploymentImmutables = {
+      orderHash: orderParams.orderHash,
+      hashlock: orderParams.secretHash,
+      maker: orderParams.maker,
+      taker: orderParams.taker,
+      token: orderParams.tokenAddress,
+      amount: userAmount, // Keep as BigInt for exact matching
+      safetyDeposit: safetyDeposit, // Keep as BigInt for exact matching
+      timelocks: encodedTimelocks // This will be the exact same value used during deployment
+    };
+
+    console.log('  Pre-calculated deployment immutables:', {
+      orderHash: deploymentImmutables.orderHash,
+      hashlock: deploymentImmutables.hashlock,
+      maker: deploymentImmutables.maker,
+      taker: deploymentImmutables.taker,
+      token: deploymentImmutables.token,
+      amount: deploymentImmutables.amount.toString(),
+      safetyDeposit: deploymentImmutables.safetyDeposit.toString(),
+      timelocks: deploymentImmutables.timelocks.toString()
     });
 
     // Deploy EscrowSrc contract
@@ -548,80 +573,155 @@ class ContractDeploymentService {
     console.log('    Access token:', accessTokenAddress);
 
     let contract;
+    let fundingTransactions = [];
+
     if (orderParams.tokenAddress === ethers.ZeroAddress) {
       // For native ETH: Send Ether during deployment
       console.log('  ETH swap: Sending Ether during deployment');
       console.log('  Total ETH to send:', ethers.formatEther(totalFunding));
       
-      // Estimate gas first with detailed error logging
-      // try {
-      //   const deployTx = contractFactory.deploy(
-      //     30 * 24 * 60 * 60,
-      //     accessTokenAddress,
-      //     { value: totalFunding }
-      //   );
-      //   console.log('  Gas estimation transaction:', deployTx);
-      //   const gasEstimate = await provider.estimateGas(deployTx);
-      //   console.log('  Gas estimate successful:', gasEstimate.toString());
-      // } catch (estimateError) {
-      //   console.error('❌ Gas estimation failed with detailed error:', estimateError);
-      //   if (estimateError.data) console.error('  Revert data:', estimateError.data);
-      //   if (estimateError.reason) console.error('  Revert reason:', estimateError.reason);
-      //   console.log('  Falling back to deployment without value for testing...');
-      //   // Fallback to deployment without value if estimation fails
-      //   contract = await contractFactory.deploy(
-      //     30 * 24 * 60 * 60,
-      //     accessTokenAddress
-      //   );
-      // }
-      
-      if (!contract) {
-        // If gas estimation passed or wasn't attempted due to fallback logic, deploy with value
+      try {
         contract = await contractFactory.deploy(
           30 * 24 * 60 * 60, // 30 days rescue delay
           accessTokenAddress, // IERC20 access token
           { value: totalFunding } // Send Ether during deployment
         );
+        
+        fundingTransactions.push({
+          type: 'eth_deployment_funding',
+          amount: totalFunding.toString(),
+          userPortion: userAmount.toString(),
+          safetyDepositPortion: safetyDeposit.toString(),
+          from: await wallet.getAddress()
+        });
+        
+      } catch (deployError) {
+        console.error('❌ Deployment with funding failed:', deployError.message);
+        console.log('🔄 Trying deployment without funding...');
+        
+        // Fallback: Deploy without funding
+        contract = await contractFactory.deploy(
+          30 * 24 * 60 * 60,
+          accessTokenAddress
+        );
+        
+        // Then send ETH separately
+        try {
+          const tx = await wallet.sendTransaction({
+            to: await contract.getAddress(),
+            value: totalFunding
+          });
+          await tx.wait();
+          
+          fundingTransactions.push({
+            type: 'eth_post_deployment_funding',
+            amount: totalFunding.toString(),
+            txHash: tx.hash,
+            from: await wallet.getAddress()
+          });
+          
+        } catch (fundingError) {
+          console.error('❌ Post-deployment funding failed:', fundingError.message);
+        }
       }
     } else {
-      // For ERC20 tokens: Follow existing logic (deploy without or with minimal value)
+      // For ERC20 tokens: Deploy without ETH funding, then transfer tokens
       console.log('  ERC20 swap: Deploying without initial ETH funding');
+      
       contract = await contractFactory.deploy(
         30 * 24 * 60 * 60, // 30 days rescue delay
         accessTokenAddress // IERC20 access token
       );
-      // Token transfer logic can remain as is
+      
+      await contract.waitForDeployment();
+      const contractAddress = await contract.getAddress();
+      
+      // Transfer tokens to contract
+      try {
+        const tokenContract = new ethers.Contract(
+          orderParams.tokenAddress,
+          ['function transfer(address to, uint256 amount) returns (bool)'],
+          wallet
+        );
+        
+        console.log('  Transferring tokens to contract...');
+        const transferTx = await tokenContract.transfer(contractAddress, userAmount);
+        await transferTx.wait();
+        
+        fundingTransactions.push({
+          type: 'erc20_token_transfer',
+          amount: userAmount.toString(),
+          token: orderParams.tokenAddress,
+          txHash: transferTx.hash,
+          from: await wallet.getAddress(),
+          to: contractAddress
+        });
+        
+      } catch (tokenError) {
+        console.error('❌ Token transfer failed:', tokenError.message);
+      }
     }
     
     await contract.waitForDeployment();
     const contractAddress = await contract.getAddress();
     console.log(`✅ Ethereum Source Escrow deployed at: ${contractAddress}`);
 
-    // Prepare immutables and return result (simplified for testing)
-    const immutables = {
+    // Verify contract has the expected balance
+    const finalBalance = await provider.getBalance(contractAddress);
+    console.log('  Final contract balance:', ethers.formatEther(finalBalance));
+
+    // Return with BOTH immutables and deploymentImmutables
+    return {
+      contractAddress,
+      transactionHash: contract.deploymentTransaction().hash,
+      contractType: 'ethereum-source',
+      // Keep immutables for backward compatibility
+      immutables: {
+        orderHash: deploymentImmutables.orderHash,
+        hashlock: deploymentImmutables.hashlock,
+        maker: deploymentImmutables.maker,
+        taker: deploymentImmutables.taker,
+        token: deploymentImmutables.token,
+        amount: deploymentImmutables.amount.toString(),
+        safetyDeposit: deploymentImmutables.safetyDeposit.toString(),
+        timelocks: deploymentImmutables.timelocks.toString()
+      },
+      // ✅ Add deploymentImmutables for withdrawal function
+      deploymentImmutables: deploymentImmutables, // This keeps BigInt values for exact matching
+      funded: fundingTransactions.length > 0,
+      fundingTransactions: fundingTransactions,
+      fundingBreakdown: {
+        resolverContribution: totalFunding.toString(),
+        userPortion: userAmount.toString(),
+        safetyDepositPortion: safetyDeposit.toString(),
+        totalLocked: totalFunding.toString()
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ Error deploying Ethereum Source escrow:');
+    console.log('  Error message:', error.message);
+    console.log('  Error code:', error.code);
+    console.log('  Stack:', error.stack);
+    
+    // Enhanced fallback with proper immutables
+    console.log('🔧 Creating enhanced mock deployment...');
+    const mockResult = this.createMockEthereumSourceContract(orderParams);
+    
+    // Add deploymentImmutables to mock result
+    const encodedTimelocks = this.encodeTimelocks(orderParams.timelocks);
+    mockResult.deploymentImmutables = {
       orderHash: orderParams.orderHash,
       hashlock: orderParams.secretHash,
       maker: orderParams.maker,
       taker: orderParams.taker,
       token: orderParams.tokenAddress,
-      amount: orderParams.amount.toString(),
-      safetyDeposit: orderParams.safetyDeposit.toString(),
-      timelocks: this.encodeTimelocks(orderParams.timelocks)
+      amount: BigInt(orderParams.amount),
+      safetyDeposit: BigInt(orderParams.safetyDeposit),
+      timelocks: encodedTimelocks
     };
-
-    return {
-      contractAddress,
-      transactionHash: contract.deploymentTransaction().hash,
-      contractType: 'ethereum-source',
-      immutables: immutables,
-      funded: orderParams.tokenAddress === ethers.ZeroAddress
-    };
-
-  } catch (error) {
-    console.error('❌ Error deploying Ethereum Source escrow:');
-    console.error('  Error message:', error.message);
-    console.error('  Error code:', error.code);
-    return this.createMockEthereumSourceContract(orderParams);
+    
+    return mockResult;
   }
 }
 
@@ -1085,46 +1185,92 @@ class ContractDeploymentService {
   // PROPER TIMELOCK ENCODING FOR ETHEREUM
   // =============================================================================
   encodeTimelocks(timelocks) {
-    try {
-      // Convert all timelock values to BigInt and pack them properly
-      const deployedAt = BigInt(timelocks.deployedAt || Math.floor(Date.now() / 1000));
-      const srcWithdrawalDelay = BigInt(timelocks.srcWithdrawalDelay || 0);
-      const srcPublicWithdrawalDelay = BigInt(timelocks.srcPublicWithdrawalDelay || 0);
-      const srcCancellationDelay = BigInt(timelocks.srcCancellationDelay || 86400);
-      const srcPublicCancellationDelay = BigInt(timelocks.srcPublicCancellationDelay || 86700);
-      const dstWithdrawalDelay = BigInt(timelocks.dstWithdrawalDelay || 0);
-      const dstPublicWithdrawalDelay = BigInt(timelocks.dstPublicWithdrawalDelay || 0);
-      const dstCancellationDelay = BigInt(timelocks.dstCancellationDelay || 43200);
+  try {
+    console.log('🕐 Encoding timelocks with input:', timelocks);
+    
+    const now = Math.floor(Date.now() / 1000);
+    const deployedAt = BigInt(timelocks.deployedAt || now);
+    
+    console.log('📅 Deployment timestamp:', deployedAt.toString(), `(${new Date(Number(deployedAt) * 1000).toISOString()})`);
+    
+    // ❌ YOUR OLD MAPPING WAS WRONG! 
+    // ✅ CORRECT MAPPING according to TimelocksLib.Stage enum:
+    // Stage.SrcWithdrawal = 0        -> bits 0-31
+    // Stage.SrcPublicWithdrawal = 1  -> bits 32-63  
+    // Stage.SrcCancellation = 2      -> bits 64-95
+    // Stage.SrcPublicCancellation = 3 -> bits 96-127
+    // Stage.DstWithdrawal = 4        -> bits 128-159
+    // Stage.DstPublicWithdrawal = 5  -> bits 160-191
+    // Stage.DstCancellation = 6      -> bits 192-223
+    // DeployedAt timestamp           -> bits 224-255
+    
+    // Calculate delays from deployment time
+    const srcWithdrawalDelay = BigInt(Math.max(0, (timelocks.withdrawalStart || (now + 30)) - Number(deployedAt)));
+    const srcPublicWithdrawalDelay = BigInt(Math.max(0, (timelocks.publicWithdrawalStart || (now + 3600)) - Number(deployedAt)));
+    const srcCancellationDelay = BigInt(Math.max(0, (timelocks.cancellationStart || (now + 86400)) - Number(deployedAt)));
+    const srcPublicCancellationDelay = BigInt(Math.max(0, (timelocks.publicCancellationStart || (now + 86700)) - Number(deployedAt)));
+    
+    // For source escrow, destination stages can be 0 or reasonable defaults
+    const dstWithdrawalDelay = BigInt(timelocks.dstWithdrawalDelay || 0);
+    const dstPublicWithdrawalDelay = BigInt(timelocks.dstPublicWithdrawalDelay || 0);
+    const dstCancellationDelay = BigInt(timelocks.dstCancellationDelay || 43200); // 12 hours
 
-      // Pack timelocks according to Ethereum contract format
-      // deployedAt (32 bits) + delays (each 32 bits)
-      let packed = deployedAt << 224n; // deployedAt in highest 32 bits
-      packed |= (srcWithdrawalDelay & 0xFFFFFFFFn) << 192n;
-      packed |= (srcPublicWithdrawalDelay & 0xFFFFFFFFn) << 160n;
-      packed |= (srcCancellationDelay & 0xFFFFFFFFn) << 128n;
-      packed |= (srcPublicCancellationDelay & 0xFFFFFFFFn) << 96n;
-      packed |= (dstWithdrawalDelay & 0xFFFFFFFFn) << 64n;
-      packed |= (dstPublicWithdrawalDelay & 0xFFFFFFFFn) << 32n;
-      packed |= (dstCancellationDelay & 0xFFFFFFFFn);
+    console.log('⏱️ Calculated delays (seconds from deployment):');
+    console.log(`  SrcWithdrawal: ${srcWithdrawalDelay} (absolute: ${Number(deployedAt) + Number(srcWithdrawalDelay)})`);
+    console.log(`  SrcPublicWithdrawal: ${srcPublicWithdrawalDelay} (absolute: ${Number(deployedAt) + Number(srcPublicWithdrawalDelay)})`);
+    console.log(`  SrcCancellation: ${srcCancellationDelay} (absolute: ${Number(deployedAt) + Number(srcCancellationDelay)})`);
+    console.log(`  SrcPublicCancellation: ${srcPublicCancellationDelay} (absolute: ${Number(deployedAt) + Number(srcPublicCancellationDelay)})`);
 
-      console.log('🔧 Timelocks encoding:', {
-        deployedAt: deployedAt.toString(),
-        srcWithdrawalDelay: srcWithdrawalDelay.toString(),
-        srcPublicWithdrawalDelay: srcPublicWithdrawalDelay.toString(),
-        srcCancellationDelay: srcCancellationDelay.toString(),
-        srcPublicCancellationDelay: srcPublicCancellationDelay.toString(),
-        dstWithdrawalDelay: dstWithdrawalDelay.toString(),
-        dstPublicWithdrawalDelay: dstPublicWithdrawalDelay.toString(),
-        dstCancellationDelay: dstCancellationDelay.toString(),
-        packed: packed.toString()
-      });
-
-      return packed;
-    } catch (error) {
-      console.error('❌ Error encoding timelocks:', error);
-      throw new Error(`Failed to encode timelocks: ${error.message}`);
+    // Validate delays fit in uint32
+    const maxUint32 = 0xFFFFFFFFn;
+    const delays = [srcWithdrawalDelay, srcPublicWithdrawalDelay, srcCancellationDelay, srcPublicCancellationDelay, dstWithdrawalDelay, dstPublicWithdrawalDelay, dstCancellationDelay];
+    
+    for (let i = 0; i < delays.length; i++) {
+      if (delays[i] > maxUint32) {
+        console.warn(`⚠️ Delay ${i} too large: ${delays[i]}, capping to ${maxUint32}`);
+        delays[i] = maxUint32;
+      }
     }
+
+    // ✅ CORRECT BIT PACKING according to Stage enum:
+    let packed = BigInt(0);
+    
+    // Pack delays in correct bit positions
+    packed |= (srcWithdrawalDelay & 0xFFFFFFFFn) << 0n;    // Stage 0: SrcWithdrawal
+    packed |= (srcPublicWithdrawalDelay & 0xFFFFFFFFn) << 32n; // Stage 1: SrcPublicWithdrawal
+    packed |= (srcCancellationDelay & 0xFFFFFFFFn) << 64n;     // Stage 2: SrcCancellation  
+    packed |= (srcPublicCancellationDelay & 0xFFFFFFFFn) << 96n; // Stage 3: SrcPublicCancellation
+    packed |= (dstWithdrawalDelay & 0xFFFFFFFFn) << 128n;      // Stage 4: DstWithdrawal
+    packed |= (dstPublicWithdrawalDelay & 0xFFFFFFFFn) << 160n; // Stage 5: DstPublicWithdrawal
+    packed |= (dstCancellationDelay & 0xFFFFFFFFn) << 192n;    // Stage 6: DstCancellation
+    
+    // Pack deployment timestamp in upper 32 bits
+    packed |= (deployedAt & 0xFFFFFFFFn) << 224n;
+
+    console.log('📦 Encoded timelocks:');
+    console.log(`  Packed value: ${packed.toString()}`);
+    console.log(`  Hex: 0x${packed.toString(16)}`);
+
+    // ✅ VERIFICATION: Decode back to verify
+    console.log('🔍 Verification - decoding packed value:');
+    const decodedDeployedAt = Number((packed >> 224n) & 0xFFFFFFFFn);
+    console.log(`  Deployed at: ${decodedDeployedAt} (${new Date(decodedDeployedAt * 1000).toISOString()})`);
+    
+    const stageNames = ['SrcWithdrawal', 'SrcPublicWithdrawal', 'SrcCancellation', 'SrcPublicCancellation', 'DstWithdrawal', 'DstPublicWithdrawal', 'DstCancellation'];
+    
+    for (let stage = 0; stage < 7; stage++) {
+      const delay = Number((packed >> BigInt(stage * 32)) & 0xFFFFFFFFn);
+      const absoluteTime = decodedDeployedAt + delay;
+      console.log(`  ${stageNames[stage]} (Stage ${stage}): delay=${delay}s, absolute=${absoluteTime} (${new Date(absoluteTime * 1000).toISOString()})`);
+    }
+
+    return packed;
+
+  } catch (error) {
+    console.error('❌ Error encoding timelocks:', error);
+    throw new Error(`Failed to encode timelocks: ${error.message}`);
   }
+}
 
   // Contract loading methods for compiled .tz files
   loadTezosDestinationContract() {

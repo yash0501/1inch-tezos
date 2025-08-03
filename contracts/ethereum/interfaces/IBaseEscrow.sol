@@ -3,7 +3,6 @@
 pragma solidity ^0.8.0;
 
 import { Address } from "../../solidity-utils/contracts/libraries/AddressLib.sol";
-
 import { Timelocks } from "../libraries/TimelocksLib.sol";
 
 /**
@@ -14,7 +13,7 @@ import { Timelocks } from "../libraries/TimelocksLib.sol";
 interface IBaseEscrow {
     struct Immutables {
         bytes32 orderHash;
-        bytes32 hashlock;  // Hash of the secret.
+        bytes32 hashlock; // Hash of the secret.
         Address maker;
         Address taker;
         Address token;
@@ -27,14 +26,14 @@ interface IBaseEscrow {
      * @notice Emitted on escrow cancellation.
      */
     event EscrowCancelled();
-
+    
     /**
      * @notice Emitted when funds are rescued.
      * @param token The address of the token rescued. Zero address for native token.
      * @param amount The amount of tokens rescued.
      */
     event FundsRescued(address token, uint256 amount);
-
+    
     /**
      * @notice Emitted on successful withdrawal.
      * @param secret The secret that unlocks the escrow.
@@ -79,4 +78,11 @@ interface IBaseEscrow {
      * @param immutables The immutables of the escrow contract.
      */
     function rescueFunds(address token, uint256 amount, Immutables calldata immutables) external;
+
+    // ✅ ADD: New helper functions you added to the contracts
+    /**
+     * @notice Returns the ETH balance of the contract.
+     * @return The ETH balance in wei.
+     */
+    function getBalance() external view returns (uint256);
 }

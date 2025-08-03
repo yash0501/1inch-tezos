@@ -17,4 +17,12 @@ interface IEscrowDst is IEscrow {
      * @param immutables The immutables of the escrow contract.
      */
     function publicWithdraw(bytes32 secret, IEscrow.Immutables calldata immutables) external;
+
+    // ✅ ADD: New helper function you added to EscrowDst contract
+    /**
+     * @notice Returns the balance of a specific token in the contract.
+     * @param token The token address to check balance for. Zero address for ETH.
+     * @return The token balance.
+     */
+    function getTokenBalance(address token) external view returns (uint256);
 }
