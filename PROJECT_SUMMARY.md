@@ -158,3 +158,58 @@ PROJECT_SUMMARY.md
 - [Taquito Documentation](https://tezostaquito.io/docs/)
 - [Hardhat Documentation](https://hardhat.org/getting-started/)
 - [1inch Limit Order Protocol](https://github.com/1inch/limit-order-protocol)
+
+---
+
+## Security Considerations
+
+- **No Custodial Risk:** At no point does any party (including the resolver/relayer) have custody of both sides' funds. All assets are locked in on-chain escrows.
+- **Atomicity:** The protocol ensures that either both escrows are settled (swap completes) or both are refunded (swap fails or is cancelled).
+- **Timelocks:** Carefully designed time windows prevent griefing and ensure that funds are always recoverable.
+- **Signature Verification:** All off-chain orders are signed using EIP-712 and verified before contract deployment.
+- **Open Source:** All contracts and backend code are open for audit and community review.
+
+---
+
+## UI/UX
+
+- **swap-ui:**  
+  - Built with React, Next.js, and TailwindCSS for a modern, responsive experience.
+  - Users are guided step-by-step: wallet connection, order creation, review, funding, secret revelation, and completion.
+  - Real-time status updates and error handling.
+  - Supports MetaMask for Ethereum and Temple/Beacon/Kukai for Tezos.
+  - Progress bar and clear feedback at each stage.
+
+---
+
+## Extensibility
+
+- **Multi-Chain Ready:**  
+  - The architecture is designed to support additional EVM and non-EVM chains in the future.
+  - Modular contract and backend structure allows for easy integration of new assets and networks.
+
+- **Token Support:**  
+  - ETH, ERC-20, XTZ, and (planned) FA2 tokens.
+  - Adding new token standards is straightforward due to modular contract design.
+
+---
+
+## Contribution
+
+- Contributions are welcome! Please open issues or pull requests for improvements, bug fixes, or new features.
+- For questions or discussions, open an issue or reach out via the project's GitHub.
+
+---
+
+## License
+
+This project is licensed under the MIT License.
+
+---
+
+## Acknowledgements
+
+- 1inch Network for the Limit Order Protocol and inspiration.
+- OpenZeppelin for secure contract libraries.
+- SmartPy and Taquito teams for Tezos tooling.
+- The Ethereum and Tezos communities for documentation and support.
