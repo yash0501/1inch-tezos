@@ -30,7 +30,7 @@ abstract contract BaseEscrow is IBaseEscrow {
     /// @notice See {IBaseEscrow-FACTORY}.
     address public immutable FACTORY = msg.sender;
 
-    constructor(uint32 rescueDelay, IERC20 accessToken) {
+    constructor(uint32 rescueDelay, IERC20 accessToken) payable {
         RESCUE_DELAY = rescueDelay;
         _ACCESS_TOKEN = accessToken;
     }

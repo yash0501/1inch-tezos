@@ -21,7 +21,7 @@ async function createAndDeployOrder() {
       takerAsset: "XTZ",                                    // Tezos native token
       makingAmount: ethers.parseEther("0.01").toString(),  // 0.01 ETH (testnet amount)
       takingAmount: "10000000",                             // 10 XTZ (in mutez)
-      resolverBeneficiary: "0x742d35Cc6634C0532925a3b8D1b5f1b7E0A4A5a7", // Resolver's ETH address
+      resolverBeneficiary: "0x6cD7f208742840078ea0025677f1fD48eC4f6259", // Resolver's ETH address
       destinationAddress: "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"    // User's Tezos address
     };
 

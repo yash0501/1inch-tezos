@@ -7,15 +7,15 @@ class CrossChainOrderService {
     this.ETH_LOCK_DURATION = 24 * 60 * 60;  // 24 hours for Ethereum
     this.TEZ_LOCK_DURATION = 12 * 60 * 60;  // 12 hours for Tezos (shorter)
     
-    // EIP-712 domain for cross-chain orders
+    // EIP-712 domain for cross-chain orders (removed verifyingContract)
     this.DOMAIN = {
       name: "1inchCrossChainOrders",
       version: "1",
-      chainId: 1, // Ethereum mainnet
-      verifyingContract: "0x0000000000000000000000000000000000000000" // To be replaced with actual contract
+      chainId: 11155111 // Sepolia testnet
+      // verifyingContract field removed - it's optional
     };
 
-    // EIP-712 types for cross-chain orders
+    // EIP-712 types for cross-chain orders (corrected structure)
     this.TYPES = {
       CrossChainOrder: [
         { name: "orderId", type: "string" },
@@ -24,11 +24,13 @@ class CrossChainOrderService {
         { name: "takerAsset", type: "string" },
         { name: "makingAmount", type: "uint256" },
         { name: "takingAmount", type: "uint256" },
-        { name: "resolverBeneficiary", type: "address" },
         { name: "secretHash", type: "bytes32" },
         { name: "srcExpiry", type: "uint256" },
         { name: "dstExpiry", type: "uint256" },
-        { name: "destinationAddress", type: "string" }
+        { name: "destinationAddress", type: "string" },
+        { name: "salt", type: "uint256" },
+        { name: "allowPartialFills", type: "bool" },
+        { name: "allowMultipleFills", type: "bool" }
       ]
     };
   }
@@ -41,7 +43,6 @@ class CrossChainOrderService {
    * @param {string} orderParams.takerAsset - FA2 token address or "XTZ" on Tezos
    * @param {string} orderParams.makingAmount - Amount of makerAsset to sell
    * @param {string} orderParams.takingAmount - Amount of takerAsset to receive
-   * @param {string} orderParams.resolverBeneficiary - Ethereum address for resolver payment
    * @param {string} orderParams.destinationAddress - Tezos address to receive tokens
    * @param {ethers.Wallet} makerWallet - Wallet to sign the order
    * @returns {Promise<Object>} Complete cross-chain order with signature
@@ -62,45 +63,33 @@ class CrossChainOrderService {
       const srcExpiry = now + this.ETH_LOCK_DURATION;
       const dstExpiry = now + this.TEZ_LOCK_DURATION;
 
-      // Build the complete cross-chain order
-      const crossChainOrder = {
-        orderId: orderId,
+      // Build the complete cross-chain order (no resolver address needed)
+      const order = {
+        orderId,
         maker: orderParams.maker,
         makerAsset: orderParams.makerAsset,
         takerAsset: orderParams.takerAsset,
         makingAmount: orderParams.makingAmount,
         takingAmount: orderParams.takingAmount,
-        resolverBeneficiary: orderParams.resolverBeneficiary,
-        secretHash: secretHash,
-        srcExpiry: srcExpiry,
-        dstExpiry: dstExpiry,
-        destinationAddress: orderParams.destinationAddress
+        secretHash,
+        srcExpiry,
+        dstExpiry,
+        destinationAddress: orderParams.destinationAddress,
+        // Additional 1inch order fields
+        salt: ethers.toBigInt(ethers.randomBytes(32)).toString(),
+        allowPartialFills: false,
+        allowMultipleFills: false
       };
 
-      console.log('📋 Cross-chain order structure:', {
-        orderId,
-        maker: crossChainOrder.maker,
-        makerAsset: crossChainOrder.makerAsset,
-        takerAsset: crossChainOrder.takerAsset,
-        makingAmount: crossChainOrder.makingAmount,
-        takingAmount: crossChainOrder.takingAmount,
-        resolverBeneficiary: crossChainOrder.resolverBeneficiary,
-        secretHash,
-        srcExpiry: new Date(srcExpiry * 1000).toISOString(),
-        dstExpiry: new Date(dstExpiry * 1000).toISOString(),
-        destinationAddress: crossChainOrder.destinationAddress
-      });
-
       // Sign the order with EIP-712
-      const signature = await this.signOrder(crossChainOrder, makerWallet);
+      const signature = await this.signOrder(order, makerWallet);
       
       // Return complete signed order with metadata
       const signedOrder = {
-        ...crossChainOrder,
+        ...order,
         signature,
-        // Metadata for internal use
         _metadata: {
-          secret, // Keep secret for deployment (will be used by resolver)
+          secret,
           createdAt: new Date().toISOString(),
           sourceChain: 'ethereum',
           targetChain: 'tezos',
@@ -140,28 +129,68 @@ class CrossChainOrderService {
   }
 
   /**
-   * Verifies an order signature
+   * Verifies an order signature using proper EIP-712 recovery
    * @param {Object} order - The signed order
    * @returns {Promise<boolean>} Whether signature is valid
    */
   async verifyOrderSignature(order) {
     try {
-      const { signature, _metadata, ...orderData } = order;
-      
-      const recoveredAddress = ethers.verifyTypedData(
-        this.DOMAIN,
+        const { signature, _metadata, ...orderData } = order;
+
+        // Check signature exists
+        if (!signature) {
+        console.error('❌ No signature found in order');
+        return false;
+        }
+
+        // Fix address fields - prevent empty strings
+        const cleanOrderData = {
+        // Primitive fields
+        orderId: orderData.orderId || "",
+        takerAsset: orderData.takerAsset || "",
+        makingAmount: orderData.makingAmount?.toString() || "0",
+        takingAmount: orderData.takingAmount?.toString() || "0",
+        secretHash: orderData.secretHash || ethers.ZeroHash,
+        srcExpiry: orderData.srcExpiry || 0,
+        dstExpiry: orderData.dstExpiry || 0,
+        destinationAddress: orderData.destinationAddress || "",
+        salt: orderData.salt?.toString() || "0",
+        allowPartialFills: Boolean(orderData.allowPartialFills),
+        allowMultipleFills: Boolean(orderData.allowMultipleFills),
+
+        // Address fields MUST use ethers.ZeroAddress as default
+        maker: orderData.maker ? orderData.maker : ethers.ZeroAddress,
+        // Fix: Handle zero-address correctly (0x0 is valid)
+        makerAsset: (orderData.makerAsset && orderData.makerAsset !== ethers.ZeroAddress) 
+                    ? orderData.makerAsset 
+                    : ethers.ZeroAddress
+        };
+
+        // Address validation
+        if (!ethers.isAddress(cleanOrderData.maker)) {
+        console.error('❌ Invalid maker address:', cleanOrderData.maker);
+        return false;
+        }
+
+        // Domain should not include undefined fields
+        const domain = {
+        name: this.DOMAIN.name,
+        version: this.DOMAIN.version,
+        chainId: this.DOMAIN.chainId
+        };
+
+        console.log('🔍 Verifying with', JSON.stringify(cleanOrderData));
+        const recoveredAddress = ethers.verifyTypedData(
+        domain,
         this.TYPES,
-        orderData,
+        cleanOrderData,
         signature
-      );
-      
-      const isValid = recoveredAddress.toLowerCase() === order.maker.toLowerCase();
-      console.log(`🔍 Signature verification: ${isValid ? 'VALID' : 'INVALID'}`);
-      
-      return isValid;
+        );
+
+        return recoveredAddress.toLowerCase() === cleanOrderData.maker.toLowerCase();
     } catch (error) {
-      console.error('❌ Error verifying signature:', error);
-      return false;
+        console.error('❌ Verification error:', error);
+        return false;
     }
   }
 
@@ -233,9 +262,7 @@ class CrossChainOrderService {
   }
 
   /**
-   * Validates order parameters before creation
-   * @param {Object} params - Order parameters to validate
-   * @returns {boolean} Whether parameters are valid
+   * Validates order parameters before creation (updated - no resolver needed)
    */
   validateOrderParams(params) {
     const required = [
@@ -244,7 +271,6 @@ class CrossChainOrderService {
       'takerAsset', 
       'makingAmount', 
       'takingAmount', 
-      'resolverBeneficiary', 
       'destinationAddress'
     ];
     
@@ -257,10 +283,6 @@ class CrossChainOrderService {
     // Validate Ethereum addresses
     if (!ethers.isAddress(params.maker)) {
       throw new Error('Invalid maker address');
-    }
-    
-    if (!ethers.isAddress(params.resolverBeneficiary)) {
-      throw new Error('Invalid resolver beneficiary address');
     }
 
     if (params.makerAsset !== ethers.ZeroAddress && !ethers.isAddress(params.makerAsset)) {

@@ -1,15 +1,46 @@
 {
+  "name": "1inch-tezos-cross-chain",
+  "version": "1.0.0",
+  "description": "Cross-chain atomic swaps between Ethereum and Tezos using 1inch Limit Order Protocol",
+  "main": "index.js",
   "scripts": {
     "compile": "hardhat compile",
-    "compile:tezos": "smartpy compile contracts/tezos/EscrowFactoryAdvanced.py --output-dir contracts/tezos/compiled",
+    "compile:tezos": "echo 'Please compile SmartPy contracts manually and place in contracts/tezos/compiled/'",
     "deploy:ethereum:sepolia": "hardhat run scripts/deploy-ethereum-contracts.js --network sepolia",
-    "deploy:ethereum:goerli": "hardhat run scripts/deploy-ethereum-contracts.js --network goerli",
     "deploy:tezos:ghostnet": "node scripts/deploy-tezos-contracts.js",
     "deploy:testnet": "npm run deploy:ethereum:sepolia && npm run deploy:tezos:ghostnet",
+    "resolver:start": "node backend/src/resolverService.js",
+    "frontend:dev": "cd swap-ui && npm run dev",
+    "frontend:build": "cd swap-ui && npm run build",
+    "frontend:start": "cd swap-ui && npm run start",
+    "dev": "concurrently \"npm run resolver:start\" \"npm run frontend:dev\"",
     "test:ethereum": "hardhat test",
-    "test:tezos": "node test/tezos/testEscrow.js",
-    "verify:sepolia": "hardhat verify --network sepolia",
-    "node": "hardhat node",
+    "test:integration": "node test/integration/fullFlow.test.js",
     "example:create-order": "node backend/src/examples/createOrder.js"
-  }
+  },
+  "dependencies": {
+    "@1inch/limit-order-protocol-contract": "^4.0.0",
+    "@taquito/signer": "^19.0.0",
+    "@taquito/taquito": "^19.0.0",
+    "@taquito/beacon-wallet": "^19.0.0",
+    "dotenv": "^16.0.0",
+    "ethers": "^6.0.0",
+    "express": "^4.18.0",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0",
+    "concurrently": "^7.6.0"
+  },
+  "keywords": [
+    "ethereum",
+    "tezos",
+    "cross-chain",
+    "atomic-swaps",
+    "1inch",
+    "defi"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
 }

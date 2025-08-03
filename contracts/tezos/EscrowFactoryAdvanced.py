@@ -8,7 +8,7 @@ def main():
         hashlock=sp.bytes,
         maker=sp.address,
         taker=sp.address,
-        token_address=sp.option[sp.address],
+        token_address=sp.option[sp.address],  # Explicitly typed
         amount=sp.mutez,
         safety_deposit=sp.mutez,
         # Simplified timelocks structure for Tezos
@@ -19,14 +19,24 @@ def main():
         rescue_start=sp.timestamp
     )
 
+    # Type for rescue parameters
+    t_rescue_params: type = sp.record(
+        token_address=sp.option[sp.address],
+        amount=sp.mutez
+    )
+
     # Source Escrow: Maker deposits, Taker withdraws with secret
     class EscrowSrc(sp.Contract):
         def __init__(self, immutables, access_token):
-            # Initialize storage directly
+            # Initialize storage directly with explicit type casting
             self.data.immutables = immutables
             self.data.access_token = access_token
             self.data.withdrawn = False
             self.data.cancelled = False
+            
+            # Explicit type casting for storage
+            sp.cast(self.data.immutables, t_immutables)
+            sp.cast(self.data.access_token, sp.option[sp.address])
 
         @sp.entrypoint
         def withdraw(self, secret):
@@ -46,11 +56,10 @@ def main():
             assert sp.sha256(secret) == self.data.immutables.hashlock, "Invalid secret"
             
             # Transfer tokens to sender
-            match self.data.immutables.token_address:
-                case None:
-                    sp.send(sp.sender, self.data.immutables.amount)
-                case Some(token_addr):
-                    raise "FA2 tokens not yet implemented"
+            if self.data.immutables.token_address.is_some():
+                raise "FA2 tokens not yet implemented"
+            else:
+                sp.send(sp.sender, self.data.immutables.amount)
             
             # Send safety deposit to caller
             sp.send(sp.sender, self.data.immutables.safety_deposit)
@@ -58,8 +67,12 @@ def main():
             self.data.withdrawn = True
 
         @sp.entrypoint
-        def withdraw_to(self, secret, target):
+        def withdraw_to(self, params):
             """Private withdrawal by taker to specified target"""
+            # Extract parameters
+            secret = params.secret
+            target = params.target
+            
             # Validate caller is taker
             assert sp.sender == self.data.immutables.taker, "Only taker can call"
             
@@ -75,11 +88,10 @@ def main():
             assert sp.sha256(secret) == self.data.immutables.hashlock, "Invalid secret"
             
             # Transfer tokens to target
-            match self.data.immutables.token_address:
-                case None:
-                    sp.send(target, self.data.immutables.amount)
-                case Some(token_addr):
-                    raise "FA2 tokens not yet implemented"
+            if self.data.immutables.token_address.is_some():
+                raise "FA2 tokens not yet implemented"
+            else:
+                sp.send(target, self.data.immutables.amount)
             
             # Send safety deposit to caller
             sp.send(sp.sender, self.data.immutables.safety_deposit)
@@ -101,11 +113,10 @@ def main():
             assert sp.sha256(secret) == self.data.immutables.hashlock, "Invalid secret"
             
             # Transfer tokens to taker
-            match self.data.immutables.token_address:
-                case None:
-                    sp.send(self.data.immutables.taker, self.data.immutables.amount)
-                case Some(token_addr):
-                    raise "FA2 tokens not yet implemented"
+            if self.data.immutables.token_address.is_some():
+                raise "FA2 tokens not yet implemented"
+            else:
+                sp.send(self.data.immutables.taker, self.data.immutables.amount)
             
             # Send safety deposit to caller
             sp.send(sp.sender, self.data.immutables.safety_deposit)
@@ -126,11 +137,10 @@ def main():
             assert not self.data.cancelled, "Already cancelled"
             
             # Return tokens to maker
-            match self.data.immutables.token_address:
-                case None:
-                    sp.send(self.data.immutables.maker, self.data.immutables.amount)
-                case Some(token_addr):
-                    raise "FA2 tokens not yet implemented"
+            if self.data.immutables.token_address.is_some():
+                raise "FA2 tokens not yet implemented"
+            else:
+                sp.send(self.data.immutables.maker, self.data.immutables.amount)
             
             # Send safety deposit to caller
             sp.send(sp.sender, self.data.immutables.safety_deposit)
@@ -148,11 +158,10 @@ def main():
             assert not self.data.cancelled, "Already cancelled"
             
             # Return tokens to maker
-            match self.data.immutables.token_address:
-                case None:
-                    sp.send(self.data.immutables.maker, self.data.immutables.amount)
-                case Some(token_addr):
-                    raise "FA2 tokens not yet implemented"
+            if self.data.immutables.token_address.is_some():
+                raise "FA2 tokens not yet implemented"
+            else:
+                sp.send(self.data.immutables.maker, self.data.immutables.amount)
             
             # Send safety deposit to caller
             sp.send(sp.sender, self.data.immutables.safety_deposit)
@@ -168,20 +177,26 @@ def main():
             # Validate timing
             assert sp.now >= self.data.immutables.rescue_start, "Too early"
             
-            match params.token_address:
-                case None:
-                    sp.send(sp.sender, params.amount)
-                case Some(token_addr):
-                    raise "FA2 rescue not yet implemented"
+            # Type cast the parameters explicitly
+            sp.cast(params, t_rescue_params)
+            
+            if params.token_address.is_some():
+                raise "FA2 rescue not yet implemented"
+            else:
+                sp.send(sp.sender, params.amount)
 
     # Destination Escrow: Taker deposits, Maker withdraws with secret
     class EscrowDst(sp.Contract):
         def __init__(self, immutables, access_token):
-            # Initialize storage directly
+            # Initialize storage directly with explicit type casting
             self.data.immutables = immutables
             self.data.access_token = access_token
             self.data.withdrawn = False
             self.data.cancelled = False
+            
+            # Explicit type casting for storage
+            sp.cast(self.data.immutables, t_immutables)
+            sp.cast(self.data.access_token, sp.option[sp.address])
 
         @sp.entrypoint
         def withdraw(self, secret):
@@ -201,11 +216,10 @@ def main():
             assert sp.sha256(secret) == self.data.immutables.hashlock, "Invalid secret"
             
             # Transfer tokens to maker
-            match self.data.immutables.token_address:
-                case None:
-                    sp.send(self.data.immutables.maker, self.data.immutables.amount)
-                case Some(token_addr):
-                    raise "FA2 tokens not yet implemented"
+            if self.data.immutables.token_address.is_some():
+                raise "FA2 tokens not yet implemented"
+            else:
+                sp.send(self.data.immutables.maker, self.data.immutables.amount)
             
             # Send safety deposit to caller
             sp.send(sp.sender, self.data.immutables.safety_deposit)
@@ -227,11 +241,10 @@ def main():
             assert sp.sha256(secret) == self.data.immutables.hashlock, "Invalid secret"
             
             # Transfer tokens to maker
-            match self.data.immutables.token_address:
-                case None:
-                    sp.send(self.data.immutables.maker, self.data.immutables.amount)
-                case Some(token_addr):
-                    raise "FA2 tokens not yet implemented"
+            if self.data.immutables.token_address.is_some():
+                raise "FA2 tokens not yet implemented"
+            else:
+                sp.send(self.data.immutables.maker, self.data.immutables.amount)
             
             # Send safety deposit to caller
             sp.send(sp.sender, self.data.immutables.safety_deposit)
@@ -252,11 +265,10 @@ def main():
             assert not self.data.cancelled, "Already cancelled"
             
             # Return tokens to taker
-            match self.data.immutables.token_address:
-                case None:
-                    sp.send(self.data.immutables.taker, self.data.immutables.amount)
-                case Some(token_addr):
-                    raise "FA2 tokens not yet implemented"
+            if self.data.immutables.token_address.is_some():
+                raise "FA2 tokens not yet implemented"
+            else:
+                sp.send(self.data.immutables.taker, self.data.immutables.amount)
             
             # Send safety deposit to caller
             sp.send(sp.sender, self.data.immutables.safety_deposit)
@@ -272,11 +284,13 @@ def main():
             # Validate timing
             assert sp.now >= self.data.immutables.rescue_start, "Too early"
             
-            match params.token_address:
-                case None:
-                    sp.send(sp.sender, params.amount)
-                case Some(token_addr):
-                    raise "FA2 rescue not yet implemented"
+            # Type cast the parameters explicitly
+            sp.cast(params, t_rescue_params)
+            
+            if params.token_address.is_some():
+                raise "FA2 rescue not yet implemented"
+            else:
+                sp.send(sp.sender, params.amount)
 
 # Test scenarios
 @sp.add_test()
@@ -298,13 +312,13 @@ def test_advanced_escrow():
     order_hash = sp.bytes("0xdeadbeef")
     current_time = sp.timestamp_from_utc_now()
     
-    # Create immutables for source escrow
+    # Create immutables for source escrow with proper None value
     src_immutables = sp.record(
         order_hash=order_hash,
         hashlock=hashlock,
         maker=maker.address,
         taker=taker.address,
-        token_address=None,  # XTZ
+        token_address=sp.cast(None, sp.option[sp.address]),  # Explicitly cast None
         amount=sp.mutez(1000000),
         safety_deposit=sp.mutez(100000),
         withdrawal_start=current_time.add_minutes(1),
@@ -317,7 +331,7 @@ def test_advanced_escrow():
     scenario.h2("Test Source Escrow Direct Deployment")
     # Deploy with initial balance (amount + safety deposit)
     initial_balance = src_immutables.amount + src_immutables.safety_deposit
-    src_escrow = main.EscrowSrc(src_immutables, sp.Some(access_token_holder.address))
+    src_escrow = main.EscrowSrc(src_immutables, sp.cast(sp.Some(access_token_holder.address), sp.option[sp.address]))
     src_escrow.set_initial_balance(initial_balance)
     scenario += src_escrow
     
@@ -332,7 +346,7 @@ def test_advanced_escrow():
         hashlock=hashlock,
         maker=maker.address,
         taker=taker.address,
-        token_address=None,
+        token_address=sp.cast(None, sp.option[sp.address]),  # Explicitly cast None
         amount=sp.mutez(2000000),
         safety_deposit=sp.mutez(200000),
         withdrawal_start=current_time.add_minutes(1),
@@ -345,7 +359,7 @@ def test_advanced_escrow():
     scenario.h2("Test Destination Escrow Direct Deployment")
     # Deploy with initial balance (amount + safety deposit)
     dst_initial_balance = dst_immutables.amount + dst_immutables.safety_deposit
-    dst_escrow = main.EscrowDst(dst_immutables, sp.Some(access_token_holder.address))
+    dst_escrow = main.EscrowDst(dst_immutables, sp.cast(sp.Some(access_token_holder.address), sp.option[sp.address]))
     dst_escrow.set_initial_balance(dst_initial_balance)
     scenario += dst_escrow
     
