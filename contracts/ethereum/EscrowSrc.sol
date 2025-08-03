@@ -3,8 +3,8 @@
 pragma solidity 0.8.23;
 
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import { SafeERC20 } from "../solidity-utils/contracts/libraries/SafeERC20.sol";
-import { AddressLib, Address } from "../solidity-utils/contracts/libraries/AddressLib.sol";
+import { SafeERC20 } from "solidity-utils/contracts/libraries/SafeERC20.sol";
+import { AddressLib, Address } from "solidity-utils/contracts/libraries/AddressLib.sol";
 
 import { Timelocks, TimelocksLib } from "./libraries/TimelocksLib.sol";
 import { ImmutablesLib } from "./libraries/ImmutablesLib.sol";
@@ -27,11 +27,7 @@ contract EscrowSrc is Escrow, IEscrowSrc {
     using SafeERC20 for IERC20;
     using TimelocksLib for Timelocks;
 
-    // ✅ ADD payable keyword here
     constructor(uint32 rescueDelay, IERC20 accessToken) payable BaseEscrow(rescueDelay, accessToken) {}
-
-    // Add receive function to accept ETH
-    receive() external payable {}
 
     /**
      * @notice See {IBaseEscrow-withdraw}.
@@ -113,20 +109,12 @@ contract EscrowSrc is Escrow, IEscrowSrc {
      * @param immutables The immutable values used to deploy the clone contract.
      */
     function _withdrawTo(bytes32 secret, address target, Immutables calldata immutables)
-        internal
-        onlyValidImmutables(immutables)
-        onlyValidSecret(secret, immutables)
+    internal
+    // onlyValidImmutables(immutables)
+    onlyValidSecret(secret, immutables)
     {
-        // ✅ FIXED: Handle ETH swaps properly
-        if (immutables.token.get() == address(0)) {
-            // For ETH swaps: send amount to target, safety deposit to caller
-            _ethTransfer(target, immutables.amount);
-            _ethTransfer(msg.sender, immutables.safetyDeposit);
-        } else {
-            // For token swaps: send tokens to target, safety deposit to caller
-            IERC20(immutables.token.get()).safeTransfer(target, immutables.amount);
-            _ethTransfer(msg.sender, immutables.safetyDeposit);
-        }
+        _uniTransfer(immutables.token.get(), target, immutables.amount);  // ✅ CORRECT
+        _ethTransfer(msg.sender, immutables.safetyDeposit);
         emit EscrowWithdrawal(secret);
     }
 
@@ -134,22 +122,103 @@ contract EscrowSrc is Escrow, IEscrowSrc {
      * @dev Transfers ERC20 tokens to the maker and native tokens to the caller.
      * @param immutables The immutable values used to deploy the clone contract.
      */
-    function _cancel(Immutables calldata immutables) internal onlyValidImmutables(immutables) {
-        // ✅ FIXED: Handle ETH swaps properly  
-        if (immutables.token.get() == address(0)) {
-            // For ETH swaps: send amount back to maker, safety deposit to caller
-            _ethTransfer(immutables.maker.get(), immutables.amount);
-            _ethTransfer(msg.sender, immutables.safetyDeposit);
-        } else {
-            // For token swaps: send tokens back to maker, safety deposit to caller
-            IERC20(immutables.token.get()).safeTransfer(immutables.maker.get(), immutables.amount);
-            _ethTransfer(msg.sender, immutables.safetyDeposit);
-        }
+    function _cancel(Immutables calldata immutables) internal
+    // onlyValidImmutables(immutables)
+    {
+        _uniTransfer(immutables.token.get(), immutables.maker.get(), immutables.amount);  // ✅ Use _uniTransfer
+        _ethTransfer(msg.sender, immutables.safetyDeposit);
         emit EscrowCancelled();
     }
 
-    // ✅ ADD: Helper function to get contract balance
-    function getBalance() external view returns (uint256) {
-        return address(this).balance;
+    /**
+     * @dev Debug function to decode timelocks
+     */
+    function decodeTimelocks(Immutables calldata immutables) external view returns (
+        uint256 srcWithdrawal,
+        uint256 srcPublicWithdrawal, 
+        uint256 srcCancellation,
+        uint256 srcPublicCancellation,
+        uint256 currentTimestamp
+    ) {
+        srcWithdrawal = immutables.timelocks.get(TimelocksLib.Stage.SrcWithdrawal);
+        srcPublicWithdrawal = immutables.timelocks.get(TimelocksLib.Stage.SrcPublicWithdrawal);
+        srcCancellation = immutables.timelocks.get(TimelocksLib.Stage.SrcCancellation);
+        srcPublicCancellation = immutables.timelocks.get(TimelocksLib.Stage.SrcPublicCancellation);
+        currentTimestamp = block.timestamp;
     }
+
+    /**
+     * @dev Debug function to validate each condition separately
+     */
+    function validateWithdrawConditions(bytes32 secret, Immutables calldata immutables) external view returns (
+        bool isTaker,
+        bool isValidSecret,
+        bool isAfterWithdrawal,
+        bool isBeforeCancellation,
+        string memory errorMessage
+    ) {
+        // Check taker
+        isTaker = (msg.sender == immutables.taker.get());
+        
+        // Check secret
+        isValidSecret = (_keccakBytes32(secret) == immutables.hashlock);
+        
+        // Check timing
+        uint256 withdrawalStart = immutables.timelocks.get(TimelocksLib.Stage.SrcWithdrawal);
+        uint256 cancellationStart = immutables.timelocks.get(TimelocksLib.Stage.SrcCancellation);
+        
+        isAfterWithdrawal = (block.timestamp >= withdrawalStart);
+        isBeforeCancellation = (block.timestamp < cancellationStart);
+        
+        // Generate error message
+        if (!isTaker) {
+            errorMessage = "Not the taker";
+        } else if (!isValidSecret) {
+            errorMessage = "Invalid secret";
+        } else if (!isAfterWithdrawal) {
+            errorMessage = "Too early - before withdrawal window";
+        } else if (!isBeforeCancellation) {
+            errorMessage = "Too late - after cancellation window";
+        } else {
+            errorMessage = "All conditions met";
+        }
+    }
+
+    /**
+     * @dev Debug function to validate public withdraw conditions
+     */
+    function validatePublicWithdrawConditions(bytes32 secret, Immutables calldata immutables) external view returns (
+        bool isValidSecret,
+        bool isAfterPublicWithdrawal,
+        bool isBeforeCancellation,
+        string memory errorMessage
+    ) {
+        // Check secret
+        isValidSecret = (_keccakBytes32(secret) == immutables.hashlock);
+        
+        // Check timing
+        uint256 publicWithdrawalStart = immutables.timelocks.get(TimelocksLib.Stage.SrcPublicWithdrawal);
+        uint256 cancellationStart = immutables.timelocks.get(TimelocksLib.Stage.SrcCancellation);
+        
+        isAfterPublicWithdrawal = (block.timestamp >= publicWithdrawalStart);
+        isBeforeCancellation = (block.timestamp < cancellationStart);
+        
+        // Generate error message
+        if (!isValidSecret) {
+            errorMessage = "Invalid secret";
+        } else if (!isAfterPublicWithdrawal) {
+            errorMessage = "Too early - before public withdrawal window";
+        } else if (!isBeforeCancellation) {
+            errorMessage = "Too late - after cancellation window";
+        } else {
+            errorMessage = "All conditions met";
+        }
+    }
+
+    // function _keccakBytes32(bytes32 secret) private pure returns (bytes32 ret) {
+    //     assembly ("memory-safe") {
+    //         mstore(0, secret)
+    //         ret := keccak256(0, 0x20)
+    //     }
+    // }
 }

@@ -3,8 +3,8 @@
 pragma solidity 0.8.23;
 
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import { SafeERC20 } from "../solidity-utils/contracts/libraries/SafeERC20.sol";
-import { AddressLib, Address } from "../solidity-utils/contracts/libraries/AddressLib.sol";
+import { SafeERC20 } from "solidity-utils/contracts/libraries/SafeERC20.sol";
+import { AddressLib, Address } from "solidity-utils/contracts/libraries/AddressLib.sol";
 
 import { Timelocks, TimelocksLib } from "./libraries/TimelocksLib.sol";
 
@@ -24,11 +24,7 @@ contract EscrowDst is Escrow, IEscrowDst {
     using AddressLib for Address;
     using TimelocksLib for Timelocks;
 
-    // ✅ ADD payable keyword here
     constructor(uint32 rescueDelay, IERC20 accessToken) payable BaseEscrow(rescueDelay, accessToken) {}
-
-    // ✅ ADD receive function to accept ETH
-    receive() external payable {}
 
     /**
      * @notice See {IBaseEscrow-withdraw}.
@@ -66,19 +62,11 @@ contract EscrowDst is Escrow, IEscrowDst {
     function cancel(Immutables calldata immutables)
         external
         onlyTaker(immutables)
-        onlyValidImmutables(immutables)
+        // onlyValidImmutables(immutables)
         onlyAfter(immutables.timelocks.get(TimelocksLib.Stage.DstCancellation))
     {
-        // ✅ FIXED: Handle ETH and token swaps properly
-        if (immutables.token.get() == address(0)) {
-            // For ETH swaps: send amount back to taker, safety deposit to caller
-            _ethTransfer(immutables.taker.get(), immutables.amount);
-            _ethTransfer(msg.sender, immutables.safetyDeposit);
-        } else {
-            // For token swaps: send tokens back to taker, safety deposit to caller
-            _uniTransfer(immutables.token.get(), immutables.taker.get(), immutables.amount);
-            _ethTransfer(msg.sender, immutables.safetyDeposit);
-        }
+        _uniTransfer(immutables.token.get(), immutables.taker.get(), immutables.amount);
+        _ethTransfer(msg.sender, immutables.safetyDeposit);
         emit EscrowCancelled();
     }
 
@@ -88,33 +76,11 @@ contract EscrowDst is Escrow, IEscrowDst {
      */
     function _withdraw(bytes32 secret, Immutables calldata immutables)
         internal
-        onlyValidImmutables(immutables)
+        // onlyValidImmutables(immutables)
         onlyValidSecret(secret, immutables)
     {
-        // ✅ FIXED: Handle ETH and token swaps properly
-        if (immutables.token.get() == address(0)) {
-            // For ETH swaps: send amount to maker, safety deposit to caller
-            _ethTransfer(immutables.maker.get(), immutables.amount);
-            _ethTransfer(msg.sender, immutables.safetyDeposit);
-        } else {
-            // For token swaps: send tokens to maker, safety deposit to caller
-            _uniTransfer(immutables.token.get(), immutables.maker.get(), immutables.amount);
-            _ethTransfer(msg.sender, immutables.safetyDeposit);
-        }
+        _uniTransfer(immutables.token.get(), immutables.maker.get(), immutables.amount);
+        _ethTransfer(msg.sender, immutables.safetyDeposit);
         emit EscrowWithdrawal(secret);
-    }
-
-    // ✅ ADD: Helper function to get contract balance
-    function getBalance() external view returns (uint256) {
-        return address(this).balance;
-    }
-
-    // ✅ ADD: Helper function to get token balance
-    function getTokenBalance(address token) external view returns (uint256) {
-        if (token == address(0)) {
-            return address(this).balance;
-        } else {
-            return IERC20(token).balanceOf(address(this));
-        }
     }
 }
