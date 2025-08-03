@@ -27,10 +27,8 @@ Tezra is a cross-chain DeFi protocol that enables trustless, atomic swaps betwee
 - [Requirements](#requirements)
 - [Setup & Installation](#setup--installation)
 - [Building & Running Locally](#building--running-locally)
-- [Testing](#testing)
 - [Notable Integrations](#notable-integrations)
 - [Why we are applying for the 1inch prize](#why-we-are-applying-for-the-1inch-prize)
-- [Demo](#demo)
 
 ---
 
@@ -136,3 +134,80 @@ swap-ui/
   public/
 .env.example
 ```
+
+---
+
+## Requirements
+
+- **Node.js** (v18+ recommended): For backend and frontend development.
+- **Yarn** or **npm**: For managing JavaScript/TypeScript dependencies.
+- **Python 3.8+**: For SmartPy (Tezos contract development).
+- **SmartPy CLI**: For compiling and testing Tezos contracts.
+- **Hardhat**: For Ethereum contract development and testing.
+- **MetaMask**: For Ethereum wallet connection in the frontend.
+- **Temple/Beacon/Kukai**: For Tezos wallet connection in the frontend.
+- **Docker** (optional): For running local blockchain nodes (Ethereum/Tezos) for full local testing.
+
+---
+
+## Setup & Installation
+
+1. **Clone the repository:**
+   ```
+   git clone https://github.com/yash0501/1inch-tezos.git
+   cd tezra
+   ```
+
+2. **Install backend dependencies:**
+   ```
+   cd backend
+   npm install
+   ```
+
+3. **Install frontend dependencies:**
+   ```
+   cd ../../swap-ui
+   npm install
+   ```
+
+4. **Ethereum and Tezos contract compilation:**
+   Compiled contracts bytecode is present in `/contracts/ethereum/compiled` and `/contracts/tezos/compiled`
+
+5. **Configure environment variables:**
+   - Copy `.env.example` to `.env` in both `/swap-ui` and `/backend` and fill in the required values (RPC URLs, private keys, etc).
+
+---
+
+## Building & Running Locally
+
+1. **Run the backend resolver:**
+   ```
+   cd ../../backend
+   npm start
+   ```
+   Server started on [http://localhost:3000](http://localhost:3000)
+
+6. **Run the frontend:**
+   ```
+   cd ../../swap-ui
+   npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## Notable Integrations
+
+- **1inch Limit Order Protocol:** Used for secure, non-custodial order matching and settlement on Ethereum.
+- **OpenZeppelin:** For secure contract patterns and utilities.
+- **Taquito & Beacon:** For seamless Tezos wallet integration and contract interaction.
+- **@1inch/cross-chain-sdk:** For order creation, signing, serialization, and hashlock management.
+
+---
+
+## Why we are applying for the 1inch prize
+
+Tezra's innovative use of the 1inch Limit Order Protocol for cross-chain atomic swaps exemplifies the future of DeFi interoperability. Our protocol not only enhances liquidity access across Ethereum and Tezos but also sets a foundation for multi-chain DeFi ecosystems. By participating in the 1inch prize, we aim to further refine our integration, contribute to the 1inch community, and accelerate the advent of a truly interconnected blockchain finance landscape.
+
+
+Join us in bridging the Ethereum and Tezos ecosystems!
