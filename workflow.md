@@ -1,7 +1,3 @@
-<!-- ...existing content... -->
-
----
-
 ## Technical Workflow: 1inch Cross-Chain Swap (Ethereum ↔ Tezos)
 
 ### 1. Wallet Connection & UI Initialization
