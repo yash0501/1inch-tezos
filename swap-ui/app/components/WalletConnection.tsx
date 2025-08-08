@@ -1,10 +1,8 @@
 'use client';
 
-import { useState, useContext, createContext } from 'react';
+import { useState, useContext, createContext, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { TezosToolkit } from '@taquito/taquito';
-import { BeaconWallet } from '@taquito/beacon-wallet';
-import { NetworkType } from '@airgap/beacon-types';
 
 // Add global type for window.ethereum
 declare global {
@@ -14,10 +12,41 @@ declare global {
 }
 
 // Context for BeaconWallet singleton
-const BeaconWalletContext = createContext<BeaconWallet | null>(null);
+const BeaconWalletContext = createContext<any>(null);
 
 export function BeaconWalletProvider({ children }: { children: React.ReactNode }) {
-  const [wallet] = useState(() => new BeaconWallet({ name: '1inch Cross-Chain Swap' }));
+  const [wallet, setWallet] = useState<any>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Ensure we're on the client side before initializing
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Initialize BeaconWallet only after mounting on client side
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const initializeWallet = async () => {
+      try {
+        const { BeaconWallet } = await import('@taquito/beacon-wallet');
+        const walletInstance = new BeaconWallet({ 
+          name: '1inch Cross-Chain Swap' 
+        });
+        setWallet(walletInstance);
+      } catch (error) {
+        console.error('Failed to initialize BeaconWallet:', error);
+      }
+    };
+
+    initializeWallet();
+  }, [isMounted]);
+
+  // Don't render children until wallet is ready or we're sure we're on client side
+  if (!isMounted) {
+    return null; // or a loading spinner
+  }
+
   return (
     <BeaconWalletContext.Provider value={wallet}>
       {children}
@@ -60,6 +89,10 @@ export default function WalletConnection({
   const connectEthWallet = async () => {
     setIsConnectingEth(true);
     try {
+      if (typeof window === 'undefined') {
+        throw new Error('Window is not available');
+      }
+
       if (!window.ethereum) {
         throw new Error('MetaMask not found. Please install MetaMask.');
       }
@@ -91,17 +124,23 @@ export default function WalletConnection({
   const connectTezosWallet = async () => {
     setIsConnectingTez(true);
     try {
-      if (!beaconWallet) throw new Error('BeaconWallet not initialized');
+      if (!beaconWallet) {
+        throw new Error('BeaconWallet not initialized yet. Please wait...');
+      }
+
+      // Dynamic import to ensure it only loads on client side
+      const { NetworkType } = await import('@airgap/beacon-types');
+      
       const Tezos = new TezosToolkit('https://ghostnet.tezos.ecadinfra.com');
       Tezos.setWalletProvider(beaconWallet);
       await beaconWallet.requestPermissions({
-        network: { type: NetworkType.GHOSTNET } // Changed from mainnet to ghostnet
+        network: { type: NetworkType.GHOSTNET }
       });
       const tezosAddress = await beaconWallet.getPKH();
       setWalletInfo(prev => ({
         ...prev,
         tezosAddress,
-        tezosNetwork: 'Ghostnet' // Changed from 'Mainnet' to 'Ghostnet'
+        tezosNetwork: 'Ghostnet'
       }));
       onWalletConnected(null, null, null, Tezos, tezosAddress);
       showStatus('Tezos wallet connected!', 'success');
@@ -135,10 +174,17 @@ export default function WalletConnection({
         <div>
           <button
             onClick={connectTezosWallet}
-            disabled={isConnectingTez || !!walletInfo?.tezosAddress}
+            disabled={isConnectingTez || !!walletInfo?.tezosAddress || !beaconWallet}
             className="btn-primary"
           >
-            {isConnectingTez ? 'Connecting...' : walletInfo?.tezosAddress ? 'Connected ✓' : 'Connect Tezos Wallet'}
+            {!beaconWallet 
+              ? 'Initializing...' 
+              : isConnectingTez 
+                ? 'Connecting...' 
+                : walletInfo?.tezosAddress 
+                  ? 'Connected ✓' 
+                  : 'Connect Tezos Wallet'
+            }
           </button>
           {walletInfo?.tezosAddress && (
             <div className="wallet-info mt-2">
